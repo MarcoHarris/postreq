@@ -1,4 +1,4 @@
-module github.com/activepipe/requester
+module github.com/MarcoHarris/postreq
 
 go 1.15
 
