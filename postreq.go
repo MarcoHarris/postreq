@@ -24,7 +24,7 @@ func NewService(concurrency int64, maxRetries int64) *Service {
 	}
 }
 
-func (c *Service) Test(input string, params map[string]interface{}) ([]byte, int, error) {
+func (c *Service) Do(input string, params map[string]interface{}) ([]byte, int, error) {
 	item := Item{}
 	err := json.Unmarshal([]byte(input), &item)
 	if err != nil {
