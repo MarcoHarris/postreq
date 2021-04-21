@@ -13,10 +13,10 @@ import (
 	"github.com/sethgrid/pester"
 )
 
-func NewService(concurrency int64, maxRetries int64) *Service {
+func NewService(concurrency int, maxRetries int) *Service {
 	client := pester.New()
-	client.Concurrency = 3
-	client.MaxRetries = 5
+	client.Concurrency = concurrency
+	client.MaxRetries = maxRetries
 	client.Backoff = pester.ExponentialBackoff
 	client.KeepLog = true
 	return &Service{
@@ -24,98 +24,135 @@ func NewService(concurrency int64, maxRetries int64) *Service {
 	}
 }
 
-func (c *Service) Do(input string, params map[string]interface{}) ([]byte, int, error) {
+func (c *Service) Do(input string, params map[string]interface{}) (http.Header, []byte, int, error) {
 	item := Item{}
 	err := json.Unmarshal([]byte(input), &item)
 	if err != nil {
-		return nil, 999, err
+		return nil, nil, 999, err
 	}
 
-	req, err := generateRequest(item, params)
-	if err != nil {
-		log.Printf("Failed to form HTTP Request. Err: %v", err)
-		return nil, 999, err
-	}
+	req := generateRequest(item, params)
 
 	log.Printf("HTTP %v request to %v", req.Method, req.URL)
 	res, reqErr := c.Client.Do(req)
 	if reqErr != nil {
 		log.Printf("Failed to do the request. Err: %v", reqErr)
-		return nil, 999, err
+		return nil, nil, 999, reqErr
 	}
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		return nil, 999, readErr
+		return nil, nil, 999, readErr
 	}
 
-	return body, res.StatusCode, nil
+	return res.Header, body, res.StatusCode, nil
 }
 
-func generateRequest(item Item, params map[string]interface{}) (*http.Request, error) {
-
-	endpoint := generateEndpoint(item, params)
+func generateRequest(item Item, params map[string]interface{}) *http.Request {
+	endpoint := generateEndpoint(item.Request.URL.Host, item.Request.URL.Path, params)
 
 	req, err := http.NewRequest(item.Request.Method, endpoint, bytes.NewBuffer(nil))
 	if err != nil {
 		log.Printf("Failed to form HTTP Request. Err: %v", err)
-		return nil, err
 	}
 
 	q := req.URL.Query()
 	for _, each := range item.Request.URL.Query {
-		q.Set(each.Key, replacePlaceholder(each.Value, params))
+
+		if newValue, ok := getValue(each.Value, params); ok {
+			q.Set(each.Key, newValue)
+		}
 	}
 	req.URL.RawQuery = q.Encode()
 
 	for _, each := range item.Request.Header {
-		req.Header.Set(each.Key, replacePlaceholder(each.Value, params))
+		if newValue, ok := getValue(each.Value, params); ok {
+			req.Header.Set(each.Key, newValue)
+		}
+
 	}
 
-	authValue, isAvailable := generateAuth(item, params)
+	authValue, isAvailable := generateAuth(item.Request.Auth.Type, params)
 
 	if isAvailable {
 		req.Header.Set("Authorization", authValue)
 	}
-	return req, nil
+	return req
 }
 
-func generateAuth(item Item, params map[string]interface{}) (string, bool) {
+func generateAuth(inputAuthType string, params map[string]interface{}) (string, bool) {
 	var output string
+	var username, password, token string
 
-	switch authType := item.Request.Auth.Type; authType {
+	switch authType := inputAuthType; authType {
 	case "basic":
-		value := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%v:%v", params["username"], params["password"])))
+
+		if _, ok := params["username"]; ok {
+			username = params["username"].(string)
+		}
+		if _, ok := params["password"]; ok {
+			password = params["password"].(string)
+		}
+
+		value := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%v:%v", username, password)))
 		output = fmt.Sprintf("Basic %v", value)
 		return output, true
 
 	case "bearer":
-		output = fmt.Sprintf("Bearer %v", params["AccessToken"])
+
+		if _, ok := params["accessToken"]; ok {
+			token = params["accessToken"].(string)
+		}
+
+		output = fmt.Sprintf("Bearer %v", token)
 		return output, true
 	}
 
 	return output, false
 }
 
-func generateEndpoint(item Item, params map[string]interface{}) string {
+func generateEndpoint(hosts []string, paths []string, params map[string]interface{}) string {
 	var output []string
 
-	for _, value := range item.Request.URL.Host {
-		output = append(output, replacePlaceholder(value, params))
+	for _, value := range hosts {
+		if newValue, ok := getValue(value, params); ok {
+			output = append(output, newValue)
+		}
 	}
 
-	for _, value := range item.Request.URL.Path {
-		output = append(output, replacePlaceholder(value, params))
+	for _, value := range paths {
+
+		if newValue, ok := getValue(value, params); ok {
+			output = append(output, newValue)
+		}
 	}
 
 	return strings.Join(output, "/")
 }
 
-func replacePlaceholder(placeholder string, params map[string]interface{}) string {
-	for key, value := range params {
-		placeholder = strings.Replace(placeholder, fmt.Sprintf("{{%v}}", key), value.(string), -1)
-		placeholder = strings.Replace(placeholder, fmt.Sprintf(":%v", key), value.(string), -1)
+func getValue(value string, params map[string]interface{}) (string, bool) {
+	if ok := isPlaceholder(value); !ok {
+		return value, true
 	}
 
-	return placeholder
+	if result, replaced := replacePlaceholder(value, params); replaced {
+		return result, true
+	}
+
+	return "", false
+}
+
+func isPlaceholder(value string) bool {
+
+	return strings.ContainsAny(value, ":{")
+}
+
+func replacePlaceholder(placeholder string, params map[string]interface{}) (string, bool) {
+	output := placeholder
+	for key, value := range params {
+		output = strings.Replace(output, fmt.Sprintf("{{%v}}", key), fmt.Sprintf("%v", value), -1)
+		output = strings.Replace(output, fmt.Sprintf(":%v", key), fmt.Sprintf("%v", value), -1)
+	}
+
+	return output, output != placeholder
 }
