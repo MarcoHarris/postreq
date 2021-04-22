@@ -80,7 +80,7 @@ type rawInput struct {
 var input rawInput
 var inputErr = json.Unmarshal([]byte(inputJSON), &input)
 
-var inputParams map[string]interface{}
+var inputParams map[string]string
 var inputParamsErr = json.Unmarshal(input.Params, &inputParams)
 
 var item Item
@@ -91,7 +91,7 @@ var server *httptest.Server
 func Test_replacePlaceholder(t *testing.T) {
 	type args struct {
 		placeholder string
-		params      map[string]interface{}
+		params      map[string]string
 	}
 	tests := []struct {
 		name  string
@@ -137,7 +137,7 @@ func Test_isPlaceholder(t *testing.T) {
 func Test_getValue(t *testing.T) {
 	type args struct {
 		value  string
-		params map[string]interface{}
+		params map[string]string
 	}
 	tests := []struct {
 		name  string
@@ -163,7 +163,7 @@ func Test_generateEndpoint(t *testing.T) {
 	type args struct {
 		hosts  []string
 		paths  []string
-		params map[string]interface{}
+		params map[string]string
 	}
 	tests := []struct {
 		name string
@@ -183,7 +183,7 @@ func Test_generateEndpoint(t *testing.T) {
 func Test_generateAuth(t *testing.T) {
 	type args struct {
 		inputAuthType string
-		params        map[string]interface{}
+		params        map[string]string
 	}
 	tests := []struct {
 		name  string
@@ -207,7 +207,7 @@ func Test_generateAuth(t *testing.T) {
 func Test_generateRequest(t *testing.T) {
 	type args struct {
 		item   Item
-		params map[string]interface{}
+		params map[string]string
 	}
 
 	expectedOutput, _ := http.NewRequest("GET", "https://httpbin.org/status/200?api_key=l337&page=1", bytes.NewBuffer(nil))
@@ -239,10 +239,10 @@ func TestService_Do(t *testing.T) {
 	}
 	type args struct {
 		input  string
-		params map[string]interface{}
+		params map[string]string
 	}
 	client := pester.New()
-	invalidParams := map[string]interface{}{
+	invalidParams := map[string]string{
 		"host":     "magnet://asd.com",
 		"username": "user",
 		"apiKey":   "l337",
@@ -257,9 +257,9 @@ func TestService_Do(t *testing.T) {
 		want1   int
 		wantErr bool
 	}{
-		{"test invalid json", fields{client, 3, 5}, args{"{", inputParams}, nil, 999, true},
+		{"test invalid json", fields{client, 3, 5}, args{"{", inputParams}, nil, 0, true},
 		{"test payload", fields{client, 3, 5}, args{string(input.Request), inputParams}, []byte{}, 200, false},
-		{"test invalid URL", fields{client, 3, 5}, args{string(input.Request), invalidParams}, nil, 999, true},
+		{"test invalid URL", fields{client, 3, 5}, args{string(input.Request), invalidParams}, nil, 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
