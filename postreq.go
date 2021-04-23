@@ -24,11 +24,11 @@ func NewService(concurrency int, maxRetries int) *Service {
 	}
 }
 
-func (c *Service) Do(input string, params map[string]interface{}) (http.Header, []byte, int, error) {
+func (c *Service) Do(input string, params map[string]string) (http.Header, []byte, int, error) {
 	item := Item{}
 	err := json.Unmarshal([]byte(input), &item)
 	if err != nil {
-		return nil, nil, 999, err
+		return nil, nil, 0, err
 	}
 
 	req := generateRequest(item, params)
@@ -37,18 +37,18 @@ func (c *Service) Do(input string, params map[string]interface{}) (http.Header, 
 	res, reqErr := c.Client.Do(req)
 	if reqErr != nil {
 		log.Printf("Failed to do the request. Err: %v", reqErr)
-		return nil, nil, 999, reqErr
+		return nil, nil, 0, reqErr
 	}
 
 	body, readErr := ioutil.ReadAll(res.Body)
 	if readErr != nil {
-		return nil, nil, 999, readErr
+		return nil, nil, 0, readErr
 	}
 
 	return res.Header, body, res.StatusCode, nil
 }
 
-func generateRequest(item Item, params map[string]interface{}) *http.Request {
+func generateRequest(item Item, params map[string]string) *http.Request {
 	endpoint := generateEndpoint(item.Request.URL.Host, item.Request.URL.Path, params)
 
 	req, err := http.NewRequest(item.Request.Method, endpoint, bytes.NewBuffer(nil))
@@ -57,17 +57,17 @@ func generateRequest(item Item, params map[string]interface{}) *http.Request {
 	}
 
 	q := req.URL.Query()
-	for _, each := range item.Request.URL.Query {
+	for _, query := range item.Request.URL.Query {
 
-		if newValue, ok := getValue(each.Value, params); ok {
-			q.Set(each.Key, newValue)
+		if newValue, ok := getValue(query.Value, params); ok {
+			q.Set(query.Key, newValue)
 		}
 	}
 	req.URL.RawQuery = q.Encode()
 
-	for _, each := range item.Request.Header {
-		if newValue, ok := getValue(each.Value, params); ok {
-			req.Header.Set(each.Key, newValue)
+	for _, header := range item.Request.Header {
+		if newValue, ok := getValue(header.Value, params); ok {
+			req.Header.Set(header.Key, newValue)
 		}
 
 	}
@@ -80,38 +80,35 @@ func generateRequest(item Item, params map[string]interface{}) *http.Request {
 	return req
 }
 
-func generateAuth(inputAuthType string, params map[string]interface{}) (string, bool) {
-	var output string
-	var username, password, token string
-
+func generateAuth(inputAuthType string, params map[string]string) (string, bool) {
 	switch authType := inputAuthType; authType {
 	case "basic":
+		var username, password string
 
 		if _, ok := params["username"]; ok {
-			username = params["username"].(string)
+			username = params["username"]
 		}
 		if _, ok := params["password"]; ok {
-			password = params["password"].(string)
+			password = params["password"]
 		}
 
 		value := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%v:%v", username, password)))
-		output = fmt.Sprintf("Basic %v", value)
-		return output, true
+		return fmt.Sprintf("Basic %v", value), true
 
 	case "bearer":
+		var token string
 
 		if _, ok := params["accessToken"]; ok {
-			token = params["accessToken"].(string)
+			token = params["accessToken"]
 		}
 
-		output = fmt.Sprintf("Bearer %v", token)
-		return output, true
+		return fmt.Sprintf("Bearer %v", token), true
 	}
 
-	return output, false
+	return "", false
 }
 
-func generateEndpoint(hosts []string, paths []string, params map[string]interface{}) string {
+func generateEndpoint(hosts []string, paths []string, params map[string]string) string {
 	var output []string
 
 	for _, value := range hosts {
@@ -130,7 +127,7 @@ func generateEndpoint(hosts []string, paths []string, params map[string]interfac
 	return strings.Join(output, "/")
 }
 
-func getValue(value string, params map[string]interface{}) (string, bool) {
+func getValue(value string, params map[string]string) (string, bool) {
 	if ok := isPlaceholder(value); !ok {
 		return value, true
 	}
@@ -147,7 +144,7 @@ func isPlaceholder(value string) bool {
 	return strings.ContainsAny(value, ":{")
 }
 
-func replacePlaceholder(placeholder string, params map[string]interface{}) (string, bool) {
+func replacePlaceholder(placeholder string, params map[string]string) (string, bool) {
 	output := placeholder
 	for key, value := range params {
 		output = strings.Replace(output, fmt.Sprintf("{{%v}}", key), fmt.Sprintf("%v", value), -1)
