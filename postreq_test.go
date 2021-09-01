@@ -182,8 +182,8 @@ func Test_generateEndpoint(t *testing.T) {
 
 func Test_generateAuth(t *testing.T) {
 	type args struct {
-		inputAuthType string
-		params        map[string]string
+		inputAuth *Auth
+		params    map[string]string
 	}
 	tests := []struct {
 		name  string
@@ -191,15 +191,20 @@ func Test_generateAuth(t *testing.T) {
 		want  string
 		want1 bool
 	}{
-		{"generate auth from input", args{item.Request.Auth.Type, inputParams}, "Basic dXNlcjIzNDpwYXNzd29yZDEyMw==", true},
-		{"generate bearer auth", args{"bearer", inputParams}, "Bearer 1234passwordtoken", true},
-		{"generate unsupported auth", args{"digest", inputParams}, "", false},
+		{"generate auth from input", args{item.Request.Auth, inputParams}, "Basic dXNlcjIzNDpwYXNzd29yZDEyMw==", true},
+		{"generate bearer auth", args{&Auth{Type: "bearer"}, inputParams}, "Bearer 1234passwordtoken", true},
+		{"generate unsupported auth", args{&Auth{Type: "digest"}, inputParams}, "", false},
+		{"empty auth header", args{nil, inputParams}, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := generateAuth(tt.args.inputAuthType, tt.args.params)
-			assert.Equal(t, got, tt.want)
-			assert.Equal(t, got1, tt.want1)
+			got, got1 := generateAuth(tt.args.inputAuth, tt.args.params)
+			if got != tt.want {
+				t.Errorf("generateAuth() got = %v, want %v", got, tt.want)
+			}
+			if got1 != tt.want1 {
+				t.Errorf("generateAuth() got1 = %v, want %v", got1, tt.want1)
+			}
 		})
 	}
 }

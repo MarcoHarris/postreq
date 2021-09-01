@@ -72,7 +72,7 @@ func generateRequest(item Item, params map[string]string) *http.Request {
 
 	}
 
-	authValue, isAvailable := generateAuth(item.Request.Auth.Type, params)
+	authValue, isAvailable := generateAuth(item.Request.Auth, params)
 
 	if isAvailable {
 		req.Header.Set("Authorization", authValue)
@@ -80,8 +80,12 @@ func generateRequest(item Item, params map[string]string) *http.Request {
 	return req
 }
 
-func generateAuth(inputAuthType string, params map[string]string) (string, bool) {
-	switch authType := inputAuthType; authType {
+func generateAuth(inputAuth *Auth, params map[string]string) (string, bool) {
+	if inputAuth == nil {
+		return "", false
+	}
+
+	switch authType := inputAuth.Type; authType {
 	case "basic":
 		var username, password string
 
